@@ -1366,6 +1366,7 @@ export class Graph extends React.Component {
         <CourseModal
           showCourseModal={this.state.showCourseModal}
           courseId={this.state.courseId}
+          connections={this.state.connections}
           onClose={this.onClose}
         />
         <ExportModal context="graph" session="" ref={this.exportModal} />

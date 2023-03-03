@@ -1,5 +1,3 @@
-import "ag-grid-community/styles/ag-grid.css"
-import "ag-grid-community/styles/ag-theme-alpine.css"
 import React, { createRef } from "react"
 import ReactModal from "react-modal"
 import Leaflet from "leaflet"
@@ -17,7 +15,6 @@ import {
 } from "react-leaflet"
 import L from "leaflet"
 import { getCourse, getPost } from "../common/utils"
-import { AgGridReact } from "ag-grid-react"
 
 class ModalContent extends React.Component {
   render() {
@@ -36,111 +33,60 @@ class CourseModal extends React.Component {
       courseId: "",
       course: [],
       sessions: [],
+      siblingCourses: [],
       courseTitle: "",
-      allDataF: [],
-      allDataS: [],
+      clicked: 0,
     }
   }
-
-  convertToDay(day) {
-    switch (day) {
-      case 0:
-        return "Monday"
-      case 1:
-        return "Tuesday"
-      case 2:
-        return "Wednesday"
-
-      case 3:
-        return "Thursday"
-
-      case 4:
-        return "Friday"
-
-      case 5:
-        return "Friday"
-    }
-  }
-
-  getTable(sessions) {
-    let allData = []
-    sessions.map(lecture => {
-      const occurrences = { times: [], Rooms: [] }
-      const sortedTimeData = lecture.timeData.sort((occ1, occ2) =>
-        occ1.weekDay > occ2.weekDay ? 1 : -1
-      )
-      sortedTimeData.map(occurrence => {
-        let firstRoom = ""
-        occurrence.firstRoom === null || occurrence.firstRoom === undefined
-          ? (firstRoom = " ")
-          : (firstRoom = occurrence.firstRoom.room)
-        let secondRoom = ""
-        occurrence.secondRoom === null || occurrence.firstRoom === undefined
-          ? (secondRoom = " ")
-          : (secondRoom = occurrence.secondRoom.room)
-
-        if ((firstRoom != " ") & (secondRoom != " ")) {
-          firstRoom += ", "
-        }
-        occurrences.Rooms.push(firstRoom + secondRoom)
-        occurrences.times.push(
-          this.convertToDay(occurrence.weekDay) +
-            "  " +
-            occurrence.startHour +
-            " - " +
-            occurrence.endHour
-        )
-      })
-      const rowData = {
-        Activity: lecture.meetData.section,
-        Instructor: lecture.meetData.instructor,
-        Availability:
-          lecture.meetData.cap -
-          lecture.meetData.enrol +
-          " of " +
-          lecture.meetData.cap +
-          " available",
-        WaitList: lecture.meetData.wait + " Student",
-        Time: occurrences.times,
-        Room: occurrences.Rooms,
+  getSiblingCourses(course) {
+    let siblings = []
+    this.props.connections.children[course].map(child => {
+      if (child.startsWith("ellipse")) {
+        this.props.connections.parents[child].map(s => {
+          if (s !== course) {
+            siblings.push(s)
+          }
+        })
       }
-
-      allData.push(rowData)
     })
 
-    return allData
+    return siblings
   }
-
   componentDidUpdate(prevProps) {
+    let changed = 0
     if (prevProps.courseId !== this.props.courseId && this.props.courseId !== "") {
-      getCourse(this.props.courseId).then(course => {
+      changed = 1
+    } else if (this.state.clicked === 1) {
+      changed = 2
+    }
+    if (changed !== 0) {
+      let newCourse = ""
+      changed === 1
+        ? (newCourse = this.props.courseId)
+        : (newCourse = this.state.courseId)
+
+      getCourse(newCourse).then(course => {
         // Tutorials don't have a timeStr to print, so I've currently omitted them
-
-        const sessionsF = course.allMeetingTimes.filter(
-          lec => lec.meetData.session === "F"
-        )
-        const sessionsS = course.allMeetingTimes.filter(
-          lec => lec.meetData.session === "S"
-        )
-        const sortedSessionsF = sessionsF.sort((firstLec, secondLec) =>
-          firstLec.meetData.section > secondLec.meetData.section ? 1 : -1
-        )
-        const sortedSessionsS = sessionsS.sort((firstLec, secondLec) =>
-          firstLec.meetData.section > secondLec.meetData.section ? 1 : -1
-        )
-
-        const allDataF = this.getTable(sortedSessionsF)
-        const allDataS = this.getTable(sortedSessionsS)
+        const siblingCoursesCopy = this.getSiblingCourses(newCourse)
 
         this.setState({
           course: course,
-          sessions: sessionsF.concat(sessionsS),
-          courseTitle: `${this.props.courseId.toUpperCase()} ${course.title}`,
-          allDataF: allDataF,
-          allDataS: allDataS,
+          sessions: course.allMeetingTimes.sort((firstLec, secondLec) =>
+            firstLec.meetData.session > secondLec.meetData.session ? 1 : -1
+          ),
+          siblingCourses: siblingCoursesCopy,
+          courseTitle: `${newCourse.toUpperCase()} ${course.title}`,
+          clicked: 0,
         })
       })
     }
+  }
+
+  clickSibling = s => {
+    let copyState = this.state
+    copyState.courseId = s
+    copyState.clicked = 1
+    this.setState(copyState)
   }
 
   render() {
@@ -153,13 +99,17 @@ class CourseModal extends React.Component {
         ariaHideApp={false}
       >
         <div className="modal-header">{this.state.courseTitle}</div>
+        <div className="modal-header">
+          {this.state.siblingCourses.map(sibling => {
+            return (
+              <button key={sibling} onClick={() => this.clickSibling(sibling)}>
+                {sibling.toUpperCase()}
+              </button>
+            )
+          })}
+        </div>
         <div className="modal-body">
-          <Description
-            course={this.state.course}
-            sessions={this.state.sessions}
-            allDataF={this.state.allDataF}
-            allDataS={this.state.allDataS}
-          />
+          <Description course={this.state.course} sessions={this.state.sessions} />
         </div>
       </ReactModal>
     )
@@ -168,16 +118,6 @@ class CourseModal extends React.Component {
 
 //Use React component from search.js
 class Description extends React.Component {
-  cellRendererBreak(col) {
-    let i = 0
-    let result = ""
-    while (col[i] !== undefined) {
-      result += col[i] + "\n"
-      i += 1
-    }
-    return result
-  }
-
   render() {
     //We want to use the Timetable component, but that component needs to be independent before using it here
     return (
@@ -198,74 +138,17 @@ class Description extends React.Component {
         <p>
           <strong>Timetable: </strong>
         </p>
-
-        {this.props.allDataF.length !== 0 ? (
-          <>
-            <h2>{this.props.course.name + "-F"}</h2>
-            <div className="ag-theme-alpine" style={{ height: 500, width: 940 }}>
-              <AgGridReact
-                rowData={this.props.allDataF}
-                columnDefs={[
-                  { field: "Activity", width: 130 },
-                  { field: "Instructor", width: 170 },
-                  { field: "Availability" },
-                  { field: "WaitList", width: 120 },
-                  {
-                    field: "Time",
-                    cellStyle: { whiteSpace: "pre" },
-                    cellRenderer: param => this.cellRendererBreak(param.data.Time),
-                  },
-                  {
-                    field: "Room",
-                    cellStyle: { whiteSpace: "pre" },
-                    cellRenderer: param => this.cellRendererBreak(param.data.Room),
-                    width: 140,
-                  },
-                ]}
-                animateRows={true}
-                rowSelection="multiple"
-                rowHeight="100"
-              ></AgGridReact>
-            </div>
-          </>
-        ) : (
-          <div></div>
-        )}
-
-        {this.props.allDataS.length !== 0 ? (
-          <>
-            <h2>{this.props.course.name + "-S"}</h2>
-            <div className="ag-theme-alpine" style={{ height: 500, width: 940 }}>
-              <AgGridReact
-                rowData={this.props.allDataS}
-                columnDefs={[
-                  { field: "Activity", width: 130 },
-                  { field: "Instructor", width: 170 },
-                  { field: "Availability" },
-                  { field: "WaitList", width: 120 },
-                  {
-                    field: "Time",
-                    cellStyle: { whiteSpace: "pre" },
-                    cellRenderer: param => this.cellRendererBreak(param.data.Time),
-                  },
-                  {
-                    field: "Room",
-                    cellStyle: { whiteSpace: "pre" },
-                    cellRenderer: param => this.cellRendererBreak(param.data.Room),
-                    width: 140,
-                  },
-                ]}
-                animateRows={true}
-                rowSelection="multiple"
-                rowHeight="100"
-              ></AgGridReact>
-            </div>
-          </>
-        ) : (
-          <div></div>
-        )}
-
-        {/* <Video urls={this.props.course.videoUrls} /> */}
+        {this.props.sessions.map(function (lecture, i) {
+          return (
+            <p key={i}>
+              {lecture.meetData.code +
+                lecture.meetData.session +
+                "-" +
+                lecture.meetData.section}
+            </p>
+          )
+        })}
+        {/*<Video urls={this.props.course.videoUrls} />*/}
       </div>
     )
   }
